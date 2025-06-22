@@ -395,20 +395,81 @@ button:disabled {
 }
 
 .spellcheck-diff-container {
-  margin-bottom: 20px;
-}
-
-.diff-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  background-color: #f9f9f9;
+  padding: 1rem;
+  border-radius: 8px;
   border: 1px solid #ddd;
-  border-radius: 5px;
-  margin-bottom: 15px;
-  padding: 10px;
 }
 
-.diff-item h4 {
+.spellcheck-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  border: 1px solid #eee;
+  padding: 1rem;
+  border-radius: 6px;
+  background-color: #fff;
+}
+
+.diff-side {
+  cursor: pointer;
+  padding: 1rem;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  transition: all 0.2s ease-in-out;
+}
+
+.diff-side h4 {
   margin-top: 0;
-  font-size: 1em;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.5rem;
+  font-size: 0.9em;
   color: #555;
+}
+
+.diff-side p {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.diff-added {
+  background-color: #d4edda; /* Light green */
+  color: #155724;
+  padding: 2px 0;
+  border-radius: 3px;
+}
+
+.diff-removed {
+  background-color: #f8d7da; /* Light red */
+  color: #721c24;
+  text-decoration: line-through;
+  padding: 2px 0;
+  border-radius: 3px;
+}
+
+.diff-side.selected {
+  border-color: #007bff;
+  background-color: #f0f8ff;
+  box-shadow: 0 0 10px rgba(0, 123, 255, 0.2);
+}
+
+.diff-side.dimmed {
+  opacity: 0.5;
+  background-color: #f8f9fa;
+}
+
+/* Cleanup old styles no longer used by react-diff-viewer */
+.diff-item {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 5px;
+  background-color: #fff;
+  border: 1px solid #ddd;
 }
 
 .overlay-buttons {

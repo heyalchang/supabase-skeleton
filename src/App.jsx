@@ -2,7 +2,58 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
-import ReactDiffViewer from 'react-diff-viewer';
+
+// New component for highlighting word-level differences
+const DiffHighlight = ({ original, corrected }) => {
+  const originalWords = original.split(/(\\s+)/);
+  const correctedWords = corrected.split(/(\\s+)/);
+
+  const correctedMap = correctedWords.reduce((acc, word) => {
+    acc[word] = (acc[word] || 0) + 1;
+    return acc;
+  }, {});
+
+  const originalMap = originalWords.reduce((acc, word) => {
+    acc[word] = (acc[word] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <p>
+      {originalWords.map((word, i) => {
+        if (word.match(/\\s+/)) return <span key={i}>{word}</span>;
+        if (!correctedMap[word]) {
+          return <span key={i} className="diff-removed">{word}</span>;
+        }
+        correctedMap[word]--;
+        return <span key={i}>{word}</span>;
+      })}
+    </p>
+  );
+};
+
+const CorrectedHighlight = ({ original, corrected }) => {
+  const originalWords = original.split(/(\\s+)/);
+  const correctedWords = corrected.split(/(\\s+)/);
+
+  const originalMap = originalWords.reduce((acc, word) => {
+    acc[word] = (acc[word] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <p>
+      {correctedWords.map((word, i) => {
+        if (word.match(/\\s+/)) return <span key={i}>{word}</span>;
+        if (!originalMap[word]) {
+          return <span key={i} className="diff-added">{word}</span>;
+        }
+        originalMap[word]--;
+        return <span key={i}>{word}</span>;
+      })}
+    </p>
+  );
+};
 
 // Draggable debug overlay component
 const DebugOverlay = ({ logs, isVisible, onClose }) => {
@@ -97,6 +148,7 @@ function App() {
   const [spellcheckVisible, setSpellcheckVisible] = useState(false);
   const [spellcheckCorrections, setSpellcheckCorrections] = useState([]);
   const [originalTextForSpellcheck, setOriginalTextForSpellcheck] = useState('');
+  const [spellcheckSelections, setSpellcheckSelections] = useState({});
 
   const textAreaRef = useRef(null);
   const log = (message) => {
@@ -159,6 +211,11 @@ function App() {
           log('[handleSpellcheck] No corrections found.');
           alert('No spelling or grammar errors found.');
         } else {
+          const initialSelections = {};
+          data.forEach((_, index) => {
+            initialSelections[index] = 'corrected';
+          });
+          setSpellcheckSelections(initialSelections);
           setSpellcheckCorrections(data);
           setSpellcheckVisible(true);
         }
@@ -467,30 +524,40 @@ function App() {
         <div className="overlay">
           <div className="overlay-content spellcheck-overlay">
             <h2>Spellcheck Results</h2>
-            <p>Review the changes below. You can accept all changes to update your document.</p>
+            <p>For each pair, click to select the version you want to keep. The other will be dimmed.</p>
             <div className="spellcheck-diff-container">
               {spellcheckCorrections.map((correction, index) => (
-                <div key={index} className="diff-item">
-                  <h4>Correction #{index + 1}</h4>
-                   <ReactDiffViewer 
-                    oldValue={correction.original} 
-                    newValue={correction.corrected} 
-                    splitView={true} 
-                    hideLineNumbers={true}
-                  />
+                <div key={index} className="spellcheck-pair">
+                  <div
+                    className={`diff-side ${spellcheckSelections[index] === 'original' ? 'selected' : 'dimmed'}`}
+                    onClick={() => setSpellcheckSelections(s => ({ ...s, [index]: 'original' }))}
+                  >
+                    <h4>Original</h4>
+                    <DiffHighlight original={correction.original} corrected={correction.corrected} />
+                  </div>
+                  <div
+                    className={`diff-side ${spellcheckSelections[index] === 'corrected' ? 'selected' : 'dimmed'}`}
+                    onClick={() => setSpellcheckSelections(s => ({ ...s, [index]: 'corrected' }))}
+                  >
+                    <h4>Corrected</h4>
+                    <CorrectedHighlight original={correction.original} corrected={correction.corrected} />
+                  </div>
                 </div>
               ))}
             </div>
             <div className="overlay-buttons">
               <button onClick={() => {
                 let newText = originalTextForSpellcheck;
-                spellcheckCorrections.forEach(correction => {
-                  newText = newText.replace(correction.original, correction.corrected);
+                [...spellcheckCorrections].forEach((correction, index) => {
+                  const choice = spellcheckSelections[index];
+                  if (choice === 'corrected') {
+                    newText = newText.replace(correction.original, correction.corrected);
+                  }
                 });
                 setText(newText);
                 setSpellcheckVisible(false);
-                log('[Spellcheck] All changes accepted.');
-              }}>Accept All</button>
+                log('[Spellcheck] Changes applied based on selection.');
+              }}>Apply Selections</button>
               <button onClick={() => setSpellcheckVisible(false)}>Close</button>
             </div>
           </div>
