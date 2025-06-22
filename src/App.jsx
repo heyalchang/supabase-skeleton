@@ -13,16 +13,11 @@ const DiffHighlight = ({ original, corrected }) => {
     return acc;
   }, {});
 
-  const originalMap = originalWords.reduce((acc, word) => {
-    acc[word] = (acc[word] || 0) + 1;
-    return acc;
-  }, {});
-
   return (
     <p>
       {originalWords.map((word, i) => {
         if (word.match(/\\s+/)) return <span key={i}>{word}</span>;
-        if (!correctedMap[word]) {
+        if (!correctedMap[word] || correctedMap[word] < 1) {
           return <span key={i} className="diff-removed">{word}</span>;
         }
         correctedMap[word]--;
@@ -45,7 +40,7 @@ const CorrectedHighlight = ({ original, corrected }) => {
     <p>
       {correctedWords.map((word, i) => {
         if (word.match(/\\s+/)) return <span key={i}>{word}</span>;
-        if (!originalMap[word]) {
+        if (!originalMap[word] || originalMap[word] < 1) {
           return <span key={i} className="diff-added">{word}</span>;
         }
         originalMap[word]--;
