@@ -78,6 +78,23 @@ textarea:focus {
   gap: 2rem;
 }
 
+/* New container for the standalone spellcheck button */
+.spellcheck-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.spellcheck-button {
+  background-color: #27ae60; /* A distinct green color */
+  width: 50%; /* Make it wider */
+  max-width: 400px;
+}
+
+.spellcheck-button:hover:not(:disabled) {
+  background-color: #229954;
+}
+
 /* Individual Function Module */
 .function-module {
   background-color: #ffffff;
@@ -245,6 +262,14 @@ button:disabled {
   background-color: #c0392b;
 }
 
+.nav-user-info button {
+  margin-left: 10px;
+  padding: 5px 10px;
+  border: 1px solid #ccc;
+  background-color: #f0f0f0;
+  cursor: pointer;
+}
+
 /* Debug Overlay */
 .debug-overlay {
   position: fixed;
@@ -336,4 +361,101 @@ button:disabled {
   background-color: #d4e6f1;
   transform: translateY(-2px);
   border-color: #a9cce3;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.overlay-content {
+  background-color: #fff;
+  padding: 30px;
+  border-radius: 8px;
+  max-width: 80%;
+  width: 900px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.spellcheck-overlay h2 {
+  margin-top: 0;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 15px;
+  margin-bottom: 15px;
+}
+
+.spellcheck-diff-container {
+  margin-bottom: 20px;
+}
+
+.diff-item {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  padding: 10px;
+}
+
+.diff-item h4 {
+  margin-top: 0;
+  font-size: 1em;
+  color: #555;
+}
+
+.overlay-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+.overlay-buttons button {
+  padding: 10px 20px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  font-size: 1em;
+}
+
+.overlay-buttons button:first-child {
+  background-color: #28a745;
+  color: white;
+}
+
+.overlay-buttons button:last-child {
+  background-color: #6c757d;
+  color: white;
+}
+
+/* Style for the react-diff-viewer */
+.diff-container {
+  border-radius: 4px;
+}
+
+.line-number, .gutter.diff-gutter {
+  background-color: #f7f7f7;
+}
+
+.word-diff {
+  padding: 2px;
+  border-radius: 3px;
+}
+
+.word-diff-added {
+  background-color: #e6ffed;
+}
+
+.word-diff-removed {
+  background-color: #ffebe9;
+  text-decoration: line-through;
 }
