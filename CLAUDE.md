@@ -39,14 +39,23 @@ This is a React + Supabase + OpenAI integration demo with the following architec
 4. **Error Handling**: Comprehensive error handling across auth, function calls, and API requests
 
 ### Configuration Requirements
-- Supabase project URL and anon key in `src/supabaseClient.js`
+- Environment variables for Supabase credentials (see `.env.example`)
 - OpenAI API key set as Supabase secret: `OPENAI_API_KEY`
 - Supabase Auth configured with email confirmations and redirect URLs
 - CORS headers properly configured in edge function
 
+### Environment Variables
+Copy `.env.example` to `.env.local` and fill in your Supabase credentials:
+```
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+For Vercel deployment, add these as environment variables in your Vercel project settings.
+
 ### Development Workflow
 1. Set up Supabase project and get credentials
-2. Configure `supabaseClient.js` with project details
+2. Copy `.env.example` to `.env.local` and configure with your Supabase credentials
 3. Deploy edge function with `supabase functions deploy openai-chat`
 4. Set OpenAI API key as secret
 5. Run `npm run dev` for local development
@@ -54,7 +63,7 @@ This is a React + Supabase + OpenAI integration demo with the following architec
 
 ## Important Notes
 
-- The current `supabaseClient.js` contains actual project credentials and should be updated with environment variables for production
+- Environment variables are required for both local development and deployment
 - Edge function requires valid JWT token - test authentication flow before testing AI integration
 - OpenAI responses are limited to 150 tokens as configured in the edge function
 - All edge function calls include CORS headers for browser compatibility
