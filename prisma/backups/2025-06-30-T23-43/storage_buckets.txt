@@ -1,0 +1,4 @@
+ bucket_name | is_public | file_size_limit | allowed_mime_types 
+-------------+-----------+-----------------+--------------------
+(0 rows)
+
