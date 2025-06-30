@@ -7,7 +7,7 @@ on:
     branches: [main, dev]
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *" # Midnight UTC daily
+    - cron: "0 0 * * *" # Daily at midnight UTC
 
 env:
   BACKUP_ENABLED: true
@@ -37,29 +37,34 @@ jobs:
         with:
           version: latest
 
+      - name: Setup psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
       - name: Create timestamped backup folder
         id: timestamp
         run: |
-          STAMP=$(date +"%F-T%H-%M")  # e.g. 2025-06-30-T14-23
+          STAMP=$(date +"%F-T%H-%M")
           mkdir -p prisma/backups/$STAMP
           echo "stamp=$STAMP" >> $GITHUB_OUTPUT
 
-      - name: Backup roles
-        run: |
-          supabase db dump --db-url "$SUPABASE_DB_URL" \
-            -f prisma/backups/${{ steps.timestamp.outputs.stamp }}/roles.sql --role-only
-
-      - name: Backup schema
+      - name: Dump schema
         run: |
           supabase db dump --db-url "$SUPABASE_DB_URL" \
             -f prisma/backups/${{ steps.timestamp.outputs.stamp }}/schema.sql
 
-      - name: Backup data
+      - name: Dump data
         run: |
           supabase db dump --db-url "$SUPABASE_DB_URL" \
-            -f prisma/backups/${{ steps.timestamp.outputs.stamp }}/data.sql --data-only --use-copy
+            -f prisma/backups/${{ steps.timestamp.outputs.stamp }}/data.sql \
+            --data-only --use-copy
 
-      - name: Commit backup files
+      - name: Dump role summary (pg_roles)
+        run: |
+          echo "SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolcanlogin FROM pg_roles;" \
+            | psql "$SUPABASE_DB_URL" -At -F $'\t' \
+            > prisma/backups/${{ steps.timestamp.outputs.stamp }}/roles_summary.tsv
+
+      - name: Auto-commit backup files
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "Supabase backup ${{ steps.timestamp.outputs.stamp }}"
