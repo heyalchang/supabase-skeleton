@@ -1,7 +1,23 @@
 name: supabase-complete-backup
 
 on:
-  workflow_dispatch: # Manual trigger only for final backup
+  # Manual trigger
+  workflow_dispatch:
+
+  # Automatically run when code is pushed to the main or dev branches
+  push:
+    branches: [main, dev]
+    # Ignore the auto-generated backup commit itself to avoid infinite loops
+    paths-ignore:
+      - 'prisma/backups/**'
+      - 'supabase/migrations/**'
+      - 'supabase/seed.sql'
+      - 'SUPABASE_SETUP.md'
+      - 'scripts/restore-supabase.sh'
+
+  # Optionally run during pull requests so you can preview the backup before merging
+  pull_request:
+    branches: [main, dev]
 
 jobs:
   complete_backup:
