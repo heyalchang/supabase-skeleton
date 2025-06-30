@@ -1,34 +1,17 @@
-name: supabase-backup
+name: supabase-complete-backup
 
 on:
-  push:
-    branches: [main, dev]
-  pull_request:
-    branches: [main, dev]
-  workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * *" # Daily at midnight UTC
-
-env:
-  BACKUP_ENABLED: true
+  workflow_dispatch: # Manual trigger only for final backup
 
 jobs:
-  run_db_backup:
+  complete_backup:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      BACKUP_ENABLED: ${{ vars.BACKUP_ENABLED }}
-
+      
     steps:
-      - name: Exit early if backups are disabled
-        run: |
-          if [ "$BACKUP_ENABLED" != "true" ]; then
-            echo "Backups are disabled. Exiting workflow."
-            exit 0
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -37,7 +20,7 @@ jobs:
         with:
           version: latest
 
-      - name: Setup psql client
+      - name: Setup PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Create timestamped backup folder
@@ -47,8 +30,49 @@ jobs:
           mkdir -p prisma/backups/$STAMP
           echo "stamp=$STAMP" >> $GITHUB_OUTPUT
 
-      - name: Dump schema
+      - name: Create Supabase project structure
         run: |
+          mkdir -p supabase/migrations
+          mkdir -p supabase/functions
+          mkdir -p scripts
+
+      - name: Backup existing config if present
+        run: |
+          # If you already have a supabase/config.toml, keep it
+          if [ -f "supabase/config.toml" ]; then
+            cp supabase/config.toml prisma/backups/${{ steps.timestamp.outputs.stamp }}/config.toml
+            echo "✅ Backed up existing config.toml"
+          else
+            echo "⚠️  No existing config.toml found - you'll need to create one"
+            # Create a template for reference
+            cat > prisma/backups/${{ steps.timestamp.outputs.stamp }}/config.toml.template << 'EOF'
+          # Supabase project configuration template
+          # Update this with your actual settings when restoring
+          [project]
+          id = "your-project-id-here"
+
+          [api]
+          enabled = true
+          port = 54321
+          schemas = ["public", "storage", "auth"]
+          
+          [db]
+          port = 54322
+          shadow_port = 54320
+          major_version = 15
+
+          [auth]
+          enabled = true
+          site_url = "http://localhost:3000"
+          
+          [storage]
+          enabled = true
+          EOF
+          fi
+
+      - name: Dump complete schema
+        run: |
+          # Dump the entire schema including RLS policies, functions, triggers
           supabase db dump --db-url "$SUPABASE_DB_URL" \
             -f prisma/backups/${{ steps.timestamp.outputs.stamp }}/schema.sql
 
@@ -58,15 +82,323 @@ jobs:
             -f prisma/backups/${{ steps.timestamp.outputs.stamp }}/data.sql \
             --data-only --use-copy
 
-      - name: Dump role summary (pg_roles)
+      - name: Dump role summary
         run: |
           echo "SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolcanlogin FROM pg_roles;" \
             | psql "$SUPABASE_DB_URL" -At -F $'\t' \
             > prisma/backups/${{ steps.timestamp.outputs.stamp }}/roles_summary.tsv
 
-      - name: Auto-commit backup files
+      - name: Create migration file from schema
+        run: |
+          # Copy schema to migrations folder with timestamp
+          MIGRATION_TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          cp prisma/backups/${{ steps.timestamp.outputs.stamp }}/schema.sql \
+             supabase/migrations/${MIGRATION_TIMESTAMP}_complete_backup.sql
+
+      - name: Create seed file from data
+        run: |
+          # Copy data to seed.sql
+          cp prisma/backups/${{ steps.timestamp.outputs.stamp }}/data.sql \
+             supabase/seed.sql
+
+      - name: Extract current project configuration
+        run: |
+          # Get project settings that we can extract
+          cat > prisma/backups/${{ steps.timestamp.outputs.stamp }}/project_info.md << 'EOF'
+          # Project Configuration Backup
+          Date: ${{ steps.timestamp.outputs.stamp }}
+          
+          ## Database Information
+          EOF
+          
+          # Get database version
+          echo "### PostgreSQL Version" >> prisma/backups/${{ steps.timestamp.outputs.stamp }}/project_info.md
+          psql "$SUPABASE_DB_URL" -c "SELECT version();" >> prisma/backups/${{ steps.timestamp.outputs.stamp }}/project_info.md
+          
+          # Get enabled extensions
+          echo -e "\n### Enabled Extensions" >> prisma/backups/${{ steps.timestamp.outputs.stamp }}/project_info.md
+          psql "$SUPABASE_DB_URL" -c "SELECT extname, extversion FROM pg_extension ORDER BY extname;" >> prisma/backups/${{ steps.timestamp.outputs.stamp }}/project_info.md
+          
+          # Get schemas
+          echo -e "\n### Database Schemas" >> prisma/backups/${{ steps.timestamp.outputs.stamp }}/project_info.md
+          psql "$SUPABASE_DB_URL" -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema');" >> prisma/backups/${{ steps.timestamp.outputs.stamp }}/project_info.md
+
+      - name: Backup storage bucket configuration
+        run: |
+          # Export storage bucket configuration
+          psql "$SUPABASE_DB_URL" -c "
+            SELECT 
+              name as bucket_name,
+              public as is_public,
+              file_size_limit,
+              allowed_mime_types
+            FROM storage.buckets;
+          " > prisma/backups/${{ steps.timestamp.outputs.stamp }}/storage_buckets.txt
+          
+          # Create SQL to recreate buckets
+          cat > prisma/backups/${{ steps.timestamp.outputs.stamp }}/storage_setup.sql << 'EOF'
+          -- Storage bucket setup
+          -- Review storage_buckets.txt and recreate your buckets
+          
+          -- Example bucket creation (update with your actual buckets):
+          -- INSERT INTO storage.buckets (id, name, public)
+          -- VALUES ('avatars', 'avatars', true);
+          
+          -- Example RLS policy:
+          -- CREATE POLICY "Avatar images are publicly accessible"
+          -- ON storage.objects FOR SELECT
+          -- USING (bucket_id = 'avatars');
+          EOF
+
+      - name: Document environment variables
+        run: |
+          cat > .env.example << 'EOF'
+          # Supabase Configuration
+          # Get these from your Supabase project settings after creating a new project
+          NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+          SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+          
+          # Database URL (for migrations/backups)
+          SUPABASE_DB_URL=postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
+          EOF
+
+      - name: Create restoration script
+        run: |
+          cat > scripts/restore-supabase.sh << 'EOF'
+          #!/bin/bash
+          set -e
+
+          echo "🚀 Supabase Project Restoration Script"
+          echo "====================================="
+
+          # Check prerequisites
+          if ! command -v supabase &> /dev/null; then
+              echo "❌ Error: Supabase CLI not installed"
+              echo "Install from: https://supabase.com/docs/guides/cli"
+              exit 1
+          fi
+
+          # Find the latest backup
+          LATEST_BACKUP=$(ls -d prisma/backups/*/ 2>/dev/null | sort -r | head -n 1)
+          if [ -z "$LATEST_BACKUP" ]; then
+              echo "❌ Error: No backups found in prisma/backups/"
+              exit 1
+          fi
+
+          echo "📁 Using backup from: $LATEST_BACKUP"
+          echo ""
+
+          # Check if we have a config.toml
+          if [ ! -f "supabase/config.toml" ]; then
+              if [ -f "${LATEST_BACKUP}config.toml" ]; then
+                  echo "📋 Restoring config.toml from backup..."
+                  cp "${LATEST_BACKUP}config.toml" supabase/config.toml
+              else
+                  echo "⚠️  No config.toml found. You'll need to run 'supabase init' first"
+                  echo "Then update the config.toml with your project settings"
+                  exit 1
+              fi
+          fi
+
+          echo ""
+          echo "📋 Prerequisites:"
+          echo "1. Create a new project at https://app.supabase.com"
+          echo "2. Have your project ID and database password ready"
+          echo ""
+          read -p "Press Enter when ready to continue..."
+
+          # Get project details
+          echo ""
+          read -p "Enter your new project ID (e.g., xyzxyzxyzxyzxyz): " PROJECT_ID
+          read -sp "Enter your database password: " DB_PASSWORD
+          echo ""
+
+          # Update config.toml with new project ID
+          if [ -f "supabase/config.toml" ]; then
+              sed -i.bak "s/id = \".*\"/id = \"$PROJECT_ID\"/" supabase/config.toml
+              echo "✅ Updated config.toml with new project ID"
+          fi
+
+          # Link to the new project
+          echo ""
+          echo "🔗 Linking to Supabase project..."
+          supabase link --project-ref "$PROJECT_ID" --password "$DB_PASSWORD"
+
+          # Apply migrations
+          echo ""
+          echo "📊 Applying database schema..."
+          supabase db push
+
+          # Seed the database
+          if [ -f "supabase/seed.sql" ]; then
+              echo ""
+              echo "🌱 Seeding database..."
+              supabase db seed
+          fi
+
+          # Show post-restoration tasks
+          echo ""
+          echo "✅ Database restoration complete!"
+          echo ""
+          echo "📝 Review these backup files for additional configuration:"
+          echo "   - ${LATEST_BACKUP}project_info.md"
+          echo "   - ${LATEST_BACKUP}storage_buckets.txt"
+          echo "   - ${LATEST_BACKUP}roles_summary.tsv"
+          echo ""
+          echo "⚠️  Manual steps required:"
+          echo "1. Go to your Supabase project dashboard"
+          echo "2. Configure Authentication:"
+          echo "   - Enable Email/Password auth if needed"
+          echo "   - Set up OAuth providers (Google, GitHub, etc.)"
+          echo "   - Configure email templates"
+          echo "3. Create Storage buckets (check ${LATEST_BACKUP}storage_buckets.txt)"
+          echo "4. Update your .env file with new project credentials"
+          echo "5. Configure any Edge Functions"
+          echo "6. Enable any PostgreSQL extensions you were using"
+          EOF
+          
+          chmod +x scripts/restore-supabase.sh
+
+      - name: Create setup documentation
+        run: |
+          cat > SUPABASE_SETUP.md << 'EOF'
+          # Supabase Project Setup Guide
+
+          ## 🎯 Purpose
+          This repository contains complete backups of a Supabase project that can be restored to a new project at any time.
+
+          ## 📁 Backup Structure
+          ```
+          prisma/backups/
+          └── YYYY-MM-DD-THH-MM/     # Timestamped backups
+              ├── schema.sql          # Complete database schema
+              ├── data.sql            # All data
+              ├── roles_summary.tsv   # Role information
+              ├── storage_buckets.txt # Storage configuration
+              ├── project_info.md     # Project metadata
+              └── config.toml         # Supabase configuration (if exists)
+          
+          supabase/
+          ├── migrations/             # Schema migrations
+          └── seed.sql               # Seed data
+          ```
+
+          ## 🚀 Quick Restoration
+
+          ### 1. Prerequisites
+          - [Supabase CLI](https://supabase.com/docs/guides/cli) installed
+          - [Supabase account](https://app.supabase.com)
+          - Node.js/npm (if this is a web project)
+
+          ### 2. Create New Project
+          1. Go to [Supabase Dashboard](https://app.supabase.com)
+          2. Click "New Project"
+          3. Choose organization and set:
+             - Project name
+             - Database password (save this!)
+             - Region (choose closest)
+          4. Wait for project to initialize (~2 minutes)
+
+          ### 3. Run Restoration Script
+          ```bash
+          # From project root directory
+          ./scripts/restore-supabase.sh
+          ```
+
+          The script will:
+          - Find your latest backup automatically
+          - Guide you through the restoration process
+          - Apply schema and seed data
+
+          ### 4. Manual Configuration
+          After running the script, configure in Supabase Dashboard:
+
+          #### Authentication Tab:
+          - Enable Email provider
+          - Configure OAuth providers if needed
+          - Set Site URL to your app URL
+          - Configure email templates
+
+          #### Storage Tab:
+          - Check `prisma/backups/[latest]/storage_buckets.txt` for your buckets
+          - Create buckets with the same names and settings
+          - Set up bucket policies
+
+          #### Database Tab:
+          - Check `prisma/backups/[latest]/project_info.md` for extensions
+          - Enable any extensions you were using
+
+          #### Settings Tab:
+          - Copy API keys to your `.env` file
+          - Configure any custom settings
+
+          ## 💰 Cost Savings
+          - **Active project**: ~$25/month
+          - **Backed up project**: $0/month
+          - **Restoration time**: ~10 minutes
+          - **Savings per year**: ~$300
+
+          ## ⚠️ Limitations
+          - User accounts are not backed up (for security)
+          - OAuth app credentials need to be reconfigured
+          - Storage files are not backed up (only bucket config)
+          - Some settings must be manually configured in dashboard
+
+          ## 🔧 Troubleshooting
+          - If migrations fail, check `supabase/migrations/` for syntax errors
+          - For auth issues, ensure providers are enabled in dashboard
+          - For storage issues, verify bucket names match your code
+          - Check backup timestamps to ensure you're using the right backup
+          EOF
+
+      - name: Create restoration checklist
+        run: |
+          cat > prisma/backups/${{ steps.timestamp.outputs.stamp }}/RESTORATION_CHECKLIST.md << 'EOF'
+          # Restoration Checklist
+
+          ## Backup Information
+          - Backup Date: ${{ steps.timestamp.outputs.stamp }}
+          - Location: prisma/backups/${{ steps.timestamp.outputs.stamp }}/
+
+          ## Before Shutdown
+          - [x] Database schema backed up
+          - [x] Data backed up  
+          - [x] Storage bucket configuration saved
+          - [x] Role information exported
+          - [x] Project configuration documented
+          - [ ] Note any custom email templates
+          - [ ] Document OAuth app credentials (client IDs)
+          - [ ] Export any user data you need to preserve
+
+          ## After Creating New Project
+          - [ ] Run `./scripts/restore-supabase.sh`
+          - [ ] Enable Email Authentication
+          - [ ] Configure OAuth providers:
+            - [ ] Google (if used)
+            - [ ] GitHub (if used)
+            - [ ] Others: ________________
+          - [ ] Create storage buckets:
+            - [ ] Check `storage_buckets.txt` for list
+          - [ ] Update `.env` with new credentials:
+            - [ ] NEXT_PUBLIC_SUPABASE_URL
+            - [ ] NEXT_PUBLIC_SUPABASE_ANON_KEY  
+            - [ ] SUPABASE_SERVICE_ROLE_KEY
+          - [ ] Enable PostgreSQL extensions (check `project_info.md`)
+          - [ ] Configure email templates
+          - [ ] Set correct Site URL in Auth settings
+          - [ ] Test authentication flow
+          - [ ] Test database queries
+          - [ ] Test storage operations
+
+          ## Project-Specific Notes
+          _Add any custom configuration notes here:_
+          EOF
+
+      - name: Commit complete backup
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: "Supabase backup ${{ steps.timestamp.outputs.stamp }}"
+          commit_message: "🔒 Complete Supabase backup ${{ steps.timestamp.outputs.stamp }} - Ready for shutdown"
           commit_user_name: github-actions
           commit_user_email: github-actions@users.noreply.github.com
+
