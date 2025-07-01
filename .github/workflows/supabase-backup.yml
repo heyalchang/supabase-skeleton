@@ -15,9 +15,7 @@ on:
       - 'SUPABASE_SETUP.md'
       - 'scripts/restore-supabase.sh'
 
-  # Optionally run during pull requests so you can preview the backup before merging
-  pull_request:
-    branches: [main, dev]
+
 
 jobs:
   complete_backup:
@@ -414,10 +412,15 @@ jobs:
           _Add any custom configuration notes here:_
           EOF
 
-      - name: Commit complete backup
+      - name: Commit complete backup to 'backups' branch
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: "🔒 Complete Supabase backup ${{ steps.timestamp.outputs.stamp }} - Ready for shutdown"
+          commit_message: "🔒 Complete Supabase backup ${{ steps.timestamp.outputs.stamp }}"
           commit_user_name: github-actions
           commit_user_email: github-actions@users.noreply.github.com
+          # Always push backup commits to a separate branch to keep main/dev clean
+          branch: backups
+          create_branch: true
+          # In case the branch is protected we can still push if allowed; otherwise remove this line
+          push_options: '--force-with-lease'
 
